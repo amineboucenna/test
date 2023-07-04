@@ -1,0 +1,255 @@
+#!/bin/bash
+
+# Welcome message
+echo -e "\e[33mWelcome to ArchLinux Installation Script. After this installation, you will be able to say \e[36m'I use Arch btw.'\e[0m\e[0m"
+
+# Printing disks
+echo "These are your disks:"
+lsblk -l
+
+# Asking the user for the disk to use for installation
+dialog --inputbox "Please insert the disk name that you wish to use for installation (e.g., /dev/sdX):" 10 40 2> disk_input
+disk=$(cat disk_input)
+clear
+
+# Getting confirmation from the user
+valid_input=false
+
+while [ "$valid_input" = false ]; do
+    dialog --yesno "This will erase all data. Are you sure you want to continue?" 10 40
+    confirmation=$?
+    
+    if [ $confirmation -eq 0 ]; then
+        dialog --infobox "Continuing..." 5 30
+        sleep 1
+        valid_input=true
+        # Continue with the desired actions after user confirmation
+    elif [ $confirmation -eq 1 ]; then
+        dialog --infobox "Aborting..." 5 30
+        sleep 1
+        exit 0
+    else
+        dialog --msgbox "Invalid input. Please try again." 10 40
+    fi
+done
+
+# Erasing the disk
+echo -e "d\n" | fdisk "$disk"
+echo -e "w\n" | fdisk "$disk"
+
+dialog --infobox "Your disk is ready for installation..." 5 30
+sleep 2
+clear
+
+# Asking the user about the installation type: EFI or MBR
+valid_input=false
+
+while [ "$valid_input" = false ]; do
+    dialog --menu "Are you using GPT (EFI) or MBR for your installation?" 10 40 2 \
+        1 "EFI (GPT)" \
+        2 "MBR" 2> installation_type_input
+    installation_type=$(cat installation_type_input)
+    
+    if [ "$installation_type" = "1" ]; then
+        echo -e "g\nw" | fdisk "$disk"
+        dialog --infobox "Creating partitions for EFI (GPT) installation..." 5 40
+        sleep 1
+        sudo parted "$disk" mklabel gpt
+        sudo parted "$disk" mkpart primary fat32 1MiB 500MiB
+        sudo parted "$disk" set 1 esp on
+        sudo parted "$disk" mkpart primary ext4 500MiB 100%
+        mkfs.fat -F32 "$disk"1
+        mkfs.ext4 "$disk"2 
+        valid_input=true
+    elif [ "$installation_type" = "2" ]; then
+        echo -e "o\nw" | fdisk "$disk"
+        dialog --infobox "Creating partitions for MBR installation..." 5 40
+        sleep 1
+        sudo parted "$disk" mklabel msdos
+        sudo parted "$disk" mkpart primary ext4 1MiB 100%
+        mkfs.ext4 "$disk"1
+        valid_input=true
+    else
+        dialog --msgbox "Invalid input. Please try again." 10 40
+    fi
+done
+clear
+
+# Keyboard layout
+dialog --inputbox "Please enter your keyboard layout (e.g., us, fr):" 10 40 2> keyboard_layout_input
+keyboard_layout=$(cat keyboard_layout_input)
+
+# Root password
+valid_input=false
+while [ "$valid_input" = false ]; do
+    dialog --insecure --passwordbox "Please enter the root password:" 10 40 2> root_password_input
+    root_password=$(cat root_password_input)
+    dialog --insecure --passwordbox "Please confirm the root password:" 10 40 2> root_password_confirm_input
+    root_password_confirm=$(cat root_password_confirm_input)
+    
+    if [ "$root_password" = "$root_password_confirm" ]; then 
+        valid_input=true
+    else
+        dialog --msgbox "The passwords given do not match! Please try again." 10 40
+    fi
+done
+
+# User creation
+valid_input=false 
+dialog --inputbox "Let's create a user. Enter a username:" 10 40 2> username_input
+username=$(cat username_input)
+
+while [ "$valid_input" = false ]; do
+    dialog --insecure --passwordbox "Please enter the password for $username:" 10 40 2> user_password_input
+    user_password=$(cat user_password_input)
+    dialog --insecure --passwordbox "Please confirm the password for $username:" 10 40 2> user_password_confirm_input
+    user_password_confirm=$(cat user_password_confirm_input)
+    
+    if [ "$user_password" = "$user_password_confirm" ]; then 
+        valid_input=true
+    else
+        dialog --msgbox "The passwords given do not match! Please try again." 10 40
+    fi
+done
+clear
+
+# Asking the user their favorite desktop manager
+valid_input=false
+
+while [ "$valid_input" = false ]; do
+    dialog --menu "Please select your favorite desktop manager:" 12 40 5 \
+        1 "i3" \
+        2 "KDE Plasma" \
+        3 "GNOME" \
+        4 "XFCE4" \
+        5 "Deepin" 2> desktop_manager_choice_input
+    desktop_manager_choice=$(cat desktop_manager_choice_input)
+
+    case "$desktop_manager_choice" in
+        "1")
+            desktop_manager="i3"
+            valid_input=true
+            ;;
+        "2")
+            desktop_manager="KDE Plasma"
+            valid_input=true
+            ;;
+        "3")
+            desktop_manager="GNOME"
+            valid_input=true
+            ;;
+        "4")
+            desktop_manager="XFCE4"
+            valid_input=true
+            ;;
+        "5")
+            desktop_manager="Deepin"
+            valid_input=true
+            ;;
+        *)
+            dialog --msgbox "Invalid input. Please try again." 10 40
+            ;;
+    esac
+done
+dialog --infobox "You selected $desktop_manager as your favorite desktop manager." 5 50
+sleep 2
+clear
+
+# Additional packages
+dialog --inputbox "Do you want to install any additional packages? (e.g., firefox, vlc):" 10 40 2> additional_packages_input
+additional_packages=$(cat additional_packages_input)
+
+# Downloading packages based on the window manager
+window_manager_packages=""
+
+case "$desktop_manager" in
+    "i3")
+        window_manager="i3"
+        ;;
+    "KDE Plasma")
+        window_manager="plasma"
+        ;;
+    "GNOME")
+        window_manager="gnome"
+        ;;
+    "XFCE4")
+        window_manager="xfce4"
+        ;;
+    "Deepin")
+        window_manager="deepin"
+        ;;
+    *)
+        dialog --msgbox "Invalid desktop manager selection." 10 40
+        ;;
+esac
+
+dialog --inputbox "Enter a session manager:" 10 40 2> session_manager_input
+session_manager=$(cat session_manager_input)
+
+dialog --menu "Do you want to use XORG or WAYLAND?" 10 40 2 \
+    1 "XORG" \
+    2 "WAYLAND" 2> xorg_wayland_input
+xorg_wayland=$(cat xorg_wayland_input)
+clear
+
+# Mounting the partitions
+if [ "$installation_type" = "1" ]; then
+    mount "$disk"2 /mnt
+    mkdir /mnt/boot/efi
+    mount "$disk"1 /mnt/boot/efi
+    dialog --infobox "EFI partition mounted successfully." 5 40
+else
+    # MBR
+    mount "$disk"1 /mnt
+    dialog --infobox "MBR partition mounted successfully." 5 40
+fi
+
+# Retrieving the fastest servers
+dialog --infobox "Retrieving the fastest servers for a faster installation..." 5 60
+reflector --latest 3 --sort rate --save /mnt/etc/pacman.d/mirrorlist
+
+sed -i 's/^#ParallelDownloads = 5/ParallelDownloads = 15/' /mnt/etc/pacman.conf
+
+dialog --infobox "Downloading packages..." 5 40
+arch-chroot /mnt /bin/bash -c "pacstrap /mnt linux linux-firmware base base-devel grub efibootmgr networkmanager sudo nano $xorg_wayland $window_manager $additional_packages $session_manager"
+
+dialog --infobox "Packages downloaded and installed successfully." 5 40
+clear
+
+# Generating fstab
+dialog --infobox "Generating fstab..." 5 40
+genfstab -U /mnt >> /mnt/etc/fstab
+
+# Mounting chroot
+arch-chroot /mnt /bin/bash <<EOF
+sed -i 's/^#ParallelDownloads = 5/ParallelDownloads = 15/' /etc/pacman.conf
+ln -sf /usr/share/zoneinfo/Africa/Algiers /etc/localtime
+hwclock --systohc
+sed -i '/^#en_US.UTF-8/s/^#//' /etc/locale.gen
+locale-gen
+echo "root:$root_password" | chpasswd
+useradd -m $username -G wheel
+echo "$username:$user_password" | chpasswd
+echo LANG=en_US.UTF-8 > /etc/locale.conf
+echo KEYMAP=$keyboard_layout > /etc/vconsole.conf
+echo $host_name > /etc/hostname
+
+systemctl enable NetworkManager
+systemctl enable $session_manager
+
+if [ "$installation_type" = "1" ]; then
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi
+    grub-mkconfig -o /boot/grub/grub.cfg
+elif [ "$installation_type" = "2" ]; then
+    grub-install --target=i386-pc "$disk"
+    grub-mkconfig -o /boot/grub/grub.cfg
+fi
+clear
+echo "Installation complete"
+
+exit
+
+umount -R /mnt
+
+reboot
+EOF
